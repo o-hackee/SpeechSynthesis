@@ -17,8 +17,6 @@ import android.text.method.ScrollingMovementMethod
 import android.text.style.ForegroundColorSpan
 import android.util.Log
 import android.view.View
-import android.widget.EditText
-import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
 import com.microsoft.cognitiveservices.speech.AudioDataStream
@@ -31,6 +29,7 @@ import com.microsoft.cognitiveservices.speech.SpeechSynthesisEventArgs
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisOutputFormat
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisWordBoundaryEventArgs
 import com.microsoft.cognitiveservices.speech.SpeechSynthesizer
+import com.microsoft.cognitiveservices.speech.samples.speechsynthesis.databinding.ActivityMainBinding
 import java.util.concurrent.ExecutorService
 import java.util.concurrent.Executors
 
@@ -41,7 +40,7 @@ class MainActivity : AppCompatActivity() {
     private var connection: Connection? = null
     private var audioTrack: AudioTrack? = null
 
-    private lateinit var outputMessage: TextView
+    private lateinit var binding: ActivityMainBinding
 
     private var speakingRunnable: SpeakingRunnable? = null
     private var singleThreadExecutor: ExecutorService? = null
@@ -50,7 +49,8 @@ class MainActivity : AppCompatActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        binding = ActivityMainBinding.inflate(layoutInflater)
+        setContentView(binding.root)
 
         // Note: we need to request the permissions
         val requestCode = 5 // Unique code for the permission request
@@ -59,8 +59,7 @@ class MainActivity : AppCompatActivity() {
         singleThreadExecutor = Executors.newSingleThreadExecutor()
         speakingRunnable = SpeakingRunnable()
 
-        outputMessage = findViewById(R.id.outputMessage)
-        outputMessage.setMovementMethod(ScrollingMovementMethod())
+        binding.outputMessage.movementMethod = ScrollingMovementMethod()
 
         audioTrack = AudioTrack(
             AudioAttributes.Builder()
@@ -116,7 +115,7 @@ class MainActivity : AppCompatActivity() {
         // Use 24k Hz format for higher quality.
         speechConfig?.setSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm)
         // Set voice name.
-        speechConfig?.setSpeechSynthesisVoiceName("en-US-JennyNeural")
+        speechConfig?.speechSynthesisVoiceName = "en-US-JennyNeural"
         synthesizer = SpeechSynthesizer(speechConfig, null)
         connection = Connection.fromSpeechSynthesizer(synthesizer)
 
@@ -194,9 +193,7 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        val speakText = this.findViewById<EditText>(R.id.speakText)
-
-        speakingRunnable?.setContent(speakText.text.toString())
+        speakingRunnable?.setContent(binding.speakText.text.toString())
         singleThreadExecutor?.execute(speakingRunnable)
     }
 
@@ -266,12 +263,12 @@ class MainActivity : AppCompatActivity() {
     private fun updateOutputMessage(text: String, error: Boolean, append: Boolean) {
         this.runOnUiThread {
             if (append) {
-                outputMessage.append(text)
+                binding.outputMessage.append(text)
             } else {
-                outputMessage.text = text
+                binding.outputMessage.text = text
             }
             if (error) {
-                val spannableText = outputMessage.text as Spannable
+                val spannableText = binding.outputMessage.text as Spannable
                 spannableText.setSpan(ForegroundColorSpan(Color.RED),
                     spannableText.length - text.length,
                     spannableText.length,
