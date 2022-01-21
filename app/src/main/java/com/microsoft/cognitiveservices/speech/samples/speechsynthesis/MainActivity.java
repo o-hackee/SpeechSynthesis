@@ -12,6 +12,7 @@ import android.media.AudioAttributes;
 import android.media.AudioFormat;
 import android.media.AudioManager;
 import android.media.AudioTrack;
+import android.os.Build;
 import android.os.Bundle;
 import android.text.Spannable;
 import android.text.method.ScrollingMovementMethod;
@@ -129,7 +130,10 @@ public class MainActivity extends AppCompatActivity {
         synthesizer = new SpeechSynthesizer(speechConfig, null);
         connection = Connection.fromSpeechSynthesizer(synthesizer);
 
-        Locale current = getResources().getConfiguration().locale;
+        @SuppressWarnings("deprecation")
+        Locale current = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N ?
+                getResources().getConfiguration().getLocales().get(0) :
+                getResources().getConfiguration().locale;
 
         connection.connected.addEventListener((o, e) -> {
             updateOutputMessage("Connection established.\n");
