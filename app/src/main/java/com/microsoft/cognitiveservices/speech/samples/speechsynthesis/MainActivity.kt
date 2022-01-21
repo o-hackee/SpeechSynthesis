@@ -6,10 +6,6 @@ package com.microsoft.cognitiveservices.speech.samples.speechsynthesis
 
 import android.Manifest.permission
 import android.graphics.Color
-import android.media.AudioAttributes
-import android.media.AudioFormat
-import android.media.AudioManager
-import android.media.AudioTrack
 import android.os.Build
 import android.os.Bundle
 import android.text.Spannable
@@ -19,33 +15,30 @@ import android.util.Log
 import android.view.View
 import androidx.appcompat.app.AppCompatActivity
 import androidx.core.app.ActivityCompat
-import com.microsoft.cognitiveservices.speech.AudioDataStream
 import com.microsoft.cognitiveservices.speech.Connection
 import com.microsoft.cognitiveservices.speech.ConnectionEventArgs
 import com.microsoft.cognitiveservices.speech.PropertyId
 import com.microsoft.cognitiveservices.speech.SpeechConfig
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisCancellationDetails
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisEventArgs
-import com.microsoft.cognitiveservices.speech.SpeechSynthesisOutputFormat
+import com.microsoft.cognitiveservices.speech.SpeechSynthesisResult
 import com.microsoft.cognitiveservices.speech.SpeechSynthesisWordBoundaryEventArgs
 import com.microsoft.cognitiveservices.speech.SpeechSynthesizer
 import com.microsoft.cognitiveservices.speech.samples.speechsynthesis.databinding.ActivityMainBinding
-import java.util.concurrent.ExecutorService
-import java.util.concurrent.Executors
+import java.util.concurrent.Future
 
 class MainActivity : AppCompatActivity() {
+
+    companion object {
+        const val synthesisVoice = "ru-RU-DmitryNeural"
+    }
 
     private var speechConfig: SpeechConfig? = null
     private var synthesizer: SpeechSynthesizer? = null
     private var connection: Connection? = null
-    private var audioTrack: AudioTrack? = null
+    private var future: Future<SpeechSynthesisResult>? = null
 
     private lateinit var binding: ActivityMainBinding
-
-    private var speakingRunnable: SpeakingRunnable? = null
-    private var singleThreadExecutor: ExecutorService? = null
-    private val synchronizedObj = Any()
-    private var stopped = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -56,27 +49,7 @@ class MainActivity : AppCompatActivity() {
         val requestCode = 5 // Unique code for the permission request
         ActivityCompat.requestPermissions(this@MainActivity, arrayOf(permission.INTERNET), requestCode)
 
-        singleThreadExecutor = Executors.newSingleThreadExecutor()
-        speakingRunnable = SpeakingRunnable()
-
         binding.outputMessage.movementMethod = ScrollingMovementMethod()
-
-        audioTrack = AudioTrack(
-            AudioAttributes.Builder()
-                .setUsage(AudioAttributes.USAGE_MEDIA)
-                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
-                .build(),
-            AudioFormat.Builder()
-                .setEncoding(AudioFormat.ENCODING_PCM_16BIT)
-                .setSampleRate(24000)
-                .setChannelMask(AudioFormat.CHANNEL_OUT_MONO)
-                .build(),
-            AudioTrack.getMinBufferSize(
-                24000,
-                AudioFormat.CHANNEL_OUT_MONO,
-                AudioFormat.ENCODING_PCM_16BIT) * 2,
-            AudioTrack.MODE_STREAM,
-            AudioManager.AUDIO_SESSION_ID_GENERATE)
     }
 
     override fun onDestroy() {
@@ -91,12 +64,8 @@ class MainActivity : AppCompatActivity() {
             speechConfig?.close()
         }
 
-        if (audioTrack != null) {
-            singleThreadExecutor?.shutdownNow()
-            audioTrack?.flush()
-            audioTrack?.stop()
-            audioTrack?.release()
-        }
+        if (future?.isDone == false)
+            future?.cancel(true)
     }
 
     fun onCreateSynthesizerButtonClicked(v: View) {
@@ -112,11 +81,10 @@ class MainActivity : AppCompatActivity() {
         updateOutputMessage("Initializing synthesizer...\n")
 
         speechConfig = SpeechConfig.fromSubscription(getString(R.string.speech_service_subscription_key), getString(R.string.speech_service_region))
-        // Use 24k Hz format for higher quality.
-        speechConfig?.setSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm)
         // Set voice name.
-        speechConfig?.speechSynthesisVoiceName = "en-US-JennyNeural"
-        synthesizer = SpeechSynthesizer(speechConfig, null)
+        speechConfig?.speechSynthesisVoiceName = synthesisVoice
+        // use the default speaker on the system for audio output
+        synthesizer = SpeechSynthesizer(speechConfig)
         connection = Connection.fromSpeechSynthesizer(synthesizer)
 
         @SuppressWarnings("deprecation")
@@ -193,65 +161,11 @@ class MainActivity : AppCompatActivity() {
             return
         }
 
-        speakingRunnable?.setContent(binding.speakText.text.toString())
-        singleThreadExecutor?.execute(speakingRunnable)
-    }
-
-    fun onStopButtonClicked(v: View) {
-        if (synthesizer == null) {
-            updateOutputMessage("Please initialize the speech synthesizer first\n", true, true)
-            return
-        }
-
-        stopSynthesizing()
-    }
-
-    internal inner class SpeakingRunnable : Runnable {
-        private var content: String? = null
-
-        fun setContent(content: String?) {
-            this.content = content
-        }
-
-        override fun run() {
-            try {
-                audioTrack?.play()
-                synchronized (synchronizedObj) {
-                    stopped = false
-                }
-
-                val result = synthesizer!!.StartSpeakingTextAsync(content).get()
-                val audioDataStream = AudioDataStream.fromResult(result)
-
-                // Set the chunk size to 50 ms. 24000 * 16 * 0.05 / 8 = 2400
-                val buffer = ByteArray(2400)
-                while (!stopped) {
-                    val len = audioDataStream.readData(buffer)
-                    if (len == 0L) {
-                        break
-                    }
-                    audioTrack?.write(buffer, 0, len.toInt())
-                }
-
-                audioDataStream.close()
-            } catch (ex: Exception) {
-                Log.e("Speech Synthesis Demo", "unexpected " + ex.message)
-                ex.printStackTrace()
-                assert(false)
-            }
-        }
-    }
-
-    private fun stopSynthesizing() {
-        if (synthesizer != null) {
-            synthesizer?.StopSpeakingAsync()
-        }
-        if (audioTrack != null) {
-            synchronized (synchronizedObj) {
-                stopped = true
-            }
-            audioTrack?.pause()
-            audioTrack?.flush()
+        try {
+            future = synthesizer!!.SpeakTextAsync(binding.speakText.text.toString())
+        } catch (ex: Exception) {
+            Log.e("Speech Synthesis Demo", "unexpected " + ex.message)
+            ex.printStackTrace()
         }
     }
 
