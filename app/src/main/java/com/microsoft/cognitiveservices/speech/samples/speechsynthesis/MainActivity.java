@@ -39,11 +39,6 @@ import static android.Manifest.permission.INTERNET;
 
 public class MainActivity extends AppCompatActivity {
 
-    // Replace below with your own subscription key
-    private static String speechSubscriptionKey = "YourSubscriptionKey";
-    // Replace below with your own service region (e.g., "westus").
-    private static String serviceRegion = "YourServiceRegion";
-
     private SpeechConfig speechConfig;
     private SpeechSynthesizer synthesizer;
     private Connection connection;
@@ -122,7 +117,7 @@ public class MainActivity extends AppCompatActivity {
         clearOutputMessage();
         updateOutputMessage("Initializing synthesizer...\n");
 
-        speechConfig = SpeechConfig.fromSubscription(speechSubscriptionKey, serviceRegion);
+        speechConfig = SpeechConfig.fromSubscription(getString(R.string.speech_service_subscription_key), getString(R.string.speech_service_region));
         // Use 24k Hz format for higher quality.
         speechConfig.setSpeechSynthesisOutputFormat(SpeechSynthesisOutputFormat.Raw24Khz16BitMonoPcm);
         // Set voice name.
